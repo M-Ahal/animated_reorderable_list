@@ -1,8 +1,8 @@
+import 'package:animated_reorderable_list/animated_reorderable_list.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/gestures.dart';
-import 'package:animated_reorderable_list/animated_reorderable_list.dart';
+
 import 'builder/reorderable_animated_list_base.dart';
-import 'builder/reorderable_animated_list_impl.dart';
 
 /// A Flutter AnimatedListView that animates insertion and removal of the item.
 ///
