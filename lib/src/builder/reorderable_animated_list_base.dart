@@ -35,8 +35,8 @@ abstract class ReorderableAnimatedListBase<W extends Widget, E extends Object>
   final bool? longPressDraggable;
   final bool Function(E a, E b)? isSameItem;
 
-  /// Item identity for diffing, e.g. `(item) => item.id`. Hashes instead of
-  /// comparing every pair. Falls back to [isSameItem] when null.
+  /// Item identity for diffing, e.g. `(item) => item.id`. Hashes instead of comparing every pair.
+  /// Falls back to [isSameItem] when null.
   final Object Function(E item)? keyOf;
   final Duration? dragStartDelay;
   final List<E> nonDraggableItems;
@@ -251,43 +251,44 @@ abstract class ReorderableAnimatedListBaseState<
   }
 
   void calculateDiff(List<E> oldList, List<E> newList) {
-    final swappedPairs = [];
+    // One identity for both branches, so they can't drift apart again.
+    final keyOf = widget.keyOf;
+    final sameItem =
+        keyOf == null ? isSameItem : (E a, E b) => keyOf(a) == keyOf(b);
+    // Lazy: an unchanged list never reaches it.
+    late final indexInOldList = _indexLookup(oldList, keyOf, isSameItem);
 
     if (oldList.length == newList.length && widget.enableSwap) {
+      final swappedPairs = <List<int>>[];
       for (int i = 0; i < newList.length; i++) {
-        if (!isSameItem(oldList[i], newList[i])) {
-          final oldIndex =
-              oldList.indexWhere((oldItem) => isSameItem(oldItem, newList[i]));
+        if (sameItem(oldList[i], newList[i])) continue;
 
-          if (oldIndex != -1) {
-            if (isSameItem(newList[oldIndex], oldList[i])) {
-              swappedPairs.add([i, oldIndex]);
-            }
-          }
+        final oldIndex = indexInOldList(newList[i]);
+        if (oldIndex != null && sameItem(newList[oldIndex], oldList[i])) {
+          swappedPairs.add([i, oldIndex]);
         }
       }
       if (swappedPairs.isEmpty) {
         return;
       }
       // Handle swapped Items
-      for (List<int> pair in swappedPairs) {
+      for (final pair in swappedPairs) {
         listKey.currentState!.moveItem(pair[0], pair[1]);
       }
       return;
     }
 
-    final inOldList = _membershipTest(oldList, widget.keyOf, isSameItem);
-    final inNewList = _membershipTest(newList, widget.keyOf, isSameItem);
+    final indexInNewList = _indexLookup(newList, keyOf, isSameItem);
 
     // Detect removed and updated items
     for (int i = oldList.length - 1; i >= 0; i--) {
-      if (!inNewList(oldList[i])) {
+      if (indexInNewList(oldList[i]) == null) {
         listKey.currentState!.removeItem(i, removeItemDuration: removeDuration);
       }
     }
     // Detect added items
     for (int i = 0; i < newList.length; i++) {
-      if (!inOldList(newList[i])) {
+      if (indexInOldList(newList[i]) == null) {
         listKey.currentState!.insertItem(i, insertDuration: insertDuration);
       }
     }
@@ -326,15 +327,22 @@ abstract class ReorderableAnimatedListBaseState<
   }
 }
 
-/// "Is this item in [items]", with the mode chosen once per diff, not per call.
-bool Function(E item) _membershipTest<E extends Object>(
+/// Where [items] holds this item, or null. Mode picked once per diff, not per call.
+int? Function(E item) _indexLookup<E extends Object>(
   List<E> items,
   Object Function(E item)? keyOf,
   bool Function(E a, E b) isSameItem,
 ) {
   if (keyOf == null) {
-    return (item) => items.any((other) => isSameItem(item, other));
+    return (item) {
+      final index = items.indexWhere((other) => isSameItem(item, other));
+      return index == -1 ? null : index;
+    };
   }
-  final keys = items.map(keyOf).toSet();
-  return (item) => keys.contains(keyOf(item));
+  // First index wins, like the indexWhere this replaces.
+  final indexByKey = <Object, int>{};
+  for (int i = 0; i < items.length; i++) {
+    indexByKey.putIfAbsent(keyOf(items[i]), () => i);
+  }
+  return (item) => indexByKey[keyOf(item)];
 }
