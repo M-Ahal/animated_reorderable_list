@@ -17,8 +17,8 @@ Widget _host(List<int> items) => MaterialApp(
     );
 
 void main() {
-  // insertItem chains controller.forward() onto a 300ms size animation. Tearing
-  // the list down inside that window used to reach a disposed controller.
+  // insertItem chains forward() onto a 300ms size animation. Tearing down
+  // inside that window used to reach an already-disposed controller.
   testWidgets('tearing down mid-insert does not throw', (tester) async {
     await tester.pumpWidget(_host(<int>[1, 2, 3]));
 

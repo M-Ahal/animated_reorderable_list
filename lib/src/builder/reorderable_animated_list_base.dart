@@ -34,6 +34,10 @@ abstract class ReorderableAnimatedListBase<W extends Widget, E extends Object>
   final bool? buildDefaultDragHandles;
   final bool? longPressDraggable;
   final bool Function(E a, E b)? isSameItem;
+
+  /// Item identity for diffing, e.g. `(item) => item.id`. Hashes instead of
+  /// comparing every pair. Falls back to [isSameItem] when null.
+  final Object Function(E item)? keyOf;
   final Duration? dragStartDelay;
   final List<E> nonDraggableItems;
   final List<E> lockedItems;
@@ -59,6 +63,7 @@ abstract class ReorderableAnimatedListBase<W extends Widget, E extends Object>
       this.buildDefaultDragHandles,
       this.longPressDraggable,
       this.isSameItem,
+      this.keyOf,
       this.dragStartDelay,
       this.enableSwap = true,
       required this.nonDraggableItems,
@@ -245,7 +250,7 @@ abstract class ReorderableAnimatedListBaseState<
     enteries.add(entry);
   }
 
-  void calculateDiff(List oldList, List newList) {
+  void calculateDiff(List<E> oldList, List<E> newList) {
     final swappedPairs = [];
 
     if (oldList.length == newList.length && widget.enableSwap) {
@@ -271,17 +276,18 @@ abstract class ReorderableAnimatedListBaseState<
       return;
     }
 
+    final inOldList = _membershipTest(oldList, widget.keyOf, isSameItem);
+    final inNewList = _membershipTest(newList, widget.keyOf, isSameItem);
+
     // Detect removed and updated items
     for (int i = oldList.length - 1; i >= 0; i--) {
-      if (newList.indexWhere((element) => isSameItem(oldList[i], element)) ==
-          -1) {
+      if (!inNewList(oldList[i])) {
         listKey.currentState!.removeItem(i, removeItemDuration: removeDuration);
       }
     }
     // Detect added items
     for (int i = 0; i < newList.length; i++) {
-      if (oldList.indexWhere((element) => isSameItem(newList[i], element)) ==
-          -1) {
+      if (!inOldList(newList[i])) {
         listKey.currentState!.insertItem(i, insertDuration: insertDuration);
       }
     }
@@ -318,4 +324,17 @@ abstract class ReorderableAnimatedListBaseState<
       return animatedChild;
     }
   }
+}
+
+/// "Is this item in [items]", with the mode chosen once per diff, not per call.
+bool Function(E item) _membershipTest<E extends Object>(
+  List<E> items,
+  Object Function(E item)? keyOf,
+  bool Function(E a, E b) isSameItem,
+) {
+  if (keyOf == null) {
+    return (item) => items.any((other) => isSameItem(item, other));
+  }
+  final keys = items.map(keyOf).toSet();
+  return (item) => keys.contains(keyOf(item));
 }
